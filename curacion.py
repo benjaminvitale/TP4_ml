@@ -3,6 +3,7 @@ import csv
 import pandas as pd
 import preprocessing as pp
 import numpy as np
+import data_splitting as ds
 id = []
 Tipo = []
 Año = []
@@ -223,3 +224,8 @@ data_2_frame['Vendedor'] = data_2_frame['Vendedor'].map(mean_encoding2)
 
 
 
+data_frame_dev = cd
+data_frame_test = data_2_frame
+x_train,y_train,x_test,y_test,vals_min,vals_max = ds.data_split_dev(data_frame_dev)
+x_test_2,y_test_2 = ds.data_create_test(data_frame_test,vals_min,vals_max)
+X_kf,Y_kf = ds.data_create_test(data_frame_dev,vals_min,vals_max)
