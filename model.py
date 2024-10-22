@@ -1,4 +1,7 @@
 import numpy as np
+import random
+from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 class NeuralNetwork:
     def __init__(self, layers, learning_rate=0.01, max_iter=1000):
@@ -107,9 +110,7 @@ class NeuralNetwork:
         activations, _ = self._forward_propagation(X)
         return activations[-1].T
 
-import random
-from tqdm import tqdm
-import matplotlib.pyplot as plt
+
 
 class MLP(object):
 
