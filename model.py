@@ -464,3 +464,124 @@ nn_power = NeuralNetworkWithScheduler(layers=[2, 4, 1], initial_lr=0.1, max_iter
 nn_exponential = NeuralNetworkWithScheduler(layers=[2, 4, 1], initial_lr=0.1, max_iter=1000, scheduler_type='exponential', decay_rate=0.001)
 
 
+
+
+
+class NeuralNetworkWithL2:
+    def __init__(self, layers, initial_lr=0.01, max_iter=1000, lambda_=0.01):
+        """
+        layers: List that defines the architecture of the network.
+                Example: [2, 4, 1] -> 2 inputs, 4 neurons in one hidden layer, 1 output
+        initial_lr: Initial learning rate for gradient descent
+        max_iter: Number of iterations (epochs) for training
+        lambda_: L2 regularization parameter
+        """
+        self.layers = layers
+        self.initial_lr = initial_lr
+        self.max_iter = max_iter
+        self.lambda_ = lambda_
+        self.weights = []
+        self.biases = []
+        
+        # Initialize weights and biases
+        np.random.seed(42)
+        for i in range(1, len(layers)):
+            self.weights.append(np.random.randn(layers[i], layers[i-1]))
+            self.biases.append(np.random.randn(layers[i], 1))
+
+    def _sigmoid(self, z):
+        return 1 / (1 + np.exp(-z))
+
+    def _sigmoid_derivative(self, z):
+        return self._sigmoid(z) * (1 - self._sigmoid(z))
+
+    def _forward_propagation(self, X):
+        activations = [X]
+        z_values = []
+
+        for w, b in zip(self.weights, self.biases):
+            z = np.dot(w, activations[-1]) + b
+            a = self._sigmoid(z)
+            z_values.append(z)
+            activations.append(a)
+
+        return activations, z_values
+
+    def _backward_propagation(self, X, Y, activations, z_values):
+        m = Y.shape[1]
+        gradients_w = [np.zeros(w.shape) for w in self.weights]
+        gradients_b = [np.zeros(b.shape) for b in self.biases]
+
+        error = activations[-1] - Y
+        delta = error * self._sigmoid_derivative(z_values[-1])
+
+        for l in reversed(range(len(self.weights))):
+            gradients_w[l] = (np.dot(delta, activations[l].T) / m) + (self.lambda_ / m) * self.weights[l]
+            gradients_b[l] = np.sum(delta, axis=1, keepdims=True) / m
+
+            if l > 0:
+                delta = np.dot(self.weights[l].T, delta) * self._sigmoid_derivative(z_values[l-1])
+
+        return gradients_w, gradients_b
+
+    def _update_parameters(self, gradients_w, gradients_b, learning_rate):
+        for l in range(len(self.weights)):
+            self.weights[l] -= learning_rate * gradients_w[l]
+            self.biases[l] -= learning_rate * gradients_b[l]
+
+    def fit(self, X, Y, X_val=None, Y_val=None):
+        """
+        X: Training data
+        Y: Training labels
+        X_val: Validation data
+        Y_val: Validation labels
+        """
+        X = X.T
+        Y = Y.T
+        losses = []
+        val_losses = []
+
+        for epoch in range(self.max_iter):
+            learning_rate = self.initial_lr
+            
+            # Forward propagation
+            activations, z_values = self._forward_propagation(X)
+            
+            # Backward propagation
+            gradients_w, gradients_b = self._backward_propagation(X, Y, activations, z_values)
+            
+            # Update parameters
+            self._update_parameters(gradients_w, gradients_b, learning_rate)
+
+            # Calculate training loss with regularization
+            loss = np.mean(np.square(activations[-1] - Y)) + (self.lambda_ / (2 * Y.shape[1])) * sum(np.linalg.norm(w) ** 2 for w in self.weights)
+            losses.append(loss)
+            
+            # Calculate validation loss if validation data is provided
+            if X_val is not None and Y_val is not None:
+                val_activations, _ = self._forward_propagation(X_val.T)
+                val_loss = np.mean(np.square(val_activations[-1] - Y_val.T))
+                val_losses.append(val_loss)
+            
+            # Print the loss every 100 epochs
+            if epoch % 100 == 0:
+                print(f"Epoch {epoch}: Training Loss = {loss:.4f}")
+
+        # Plot the training and validation loss
+        plt.plot(losses, label='Training Loss')
+        if X_val is not None and Y_val is not None:
+            plt.plot(val_losses, label='Validation Loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.title('Loss Curve with L2 Regularization')
+        plt.legend()
+        plt.show()
+
+    def predict(self, X):
+        X = X.T
+        activations, _ = self._forward_propagation(X)
+        return activations[-1].T
+
+nn_with_l2 = NeuralNetworkWithL2(layers=[2, 4, 1], initial_lr=0.1, max_iter=1000, lambda_=0.01)
+
+
