@@ -3,118 +3,10 @@ import random
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-class NeuralNetwork:
-    def __init__(self, layers, learning_rate=0.01, max_iter=1000):
-        """
-        layers: List that defines the architecture of the network.
-                Example: [2, 4, 1] -> 2 inputs, 4 neurons in one hidden layer, 1 output
-        learning_rate: Learning rate for gradient descent
-        max_iter: Number of iterations for training
-        """
-        self.layers = layers
-        self.learning_rate = learning_rate
-        self.max_iter = max_iter
-        self.weights = []
-        self.biases = []
-        
-        # Initialize weights and biases
-        np.random.seed(42)
-        for i in range(1, len(layers)):
-            # Weight matrix between layer i-1 and i
-            self.weights.append(np.random.randn(layers[i], layers[i-1]))
-            # Bias vector for layer i
-            self.biases.append(np.random.randn(layers[i], 1))
-
-    def _sigmoid(self, z):
-        return 1 / (1 + np.exp(-z))
-
-    def _sigmoid_derivative(self, z):
-        return self._sigmoid(z) * (1 - self._sigmoid(z))
-
-    def _forward_propagation(self, X):
-        """
-        Perform forward propagation and store all layer activations.
-        X: Input matrix of shape (n_features, n_samples)
-        """
-        activations = [X]
-        z_values = []
-
-        for w, b in zip(self.weights, self.biases):
-            z = np.dot(w, activations[-1]) + b
-            a = self._sigmoid(z)
-            z_values.append(z)
-            activations.append(a)
-
-        return activations, z_values
-
-    def _backward_propagation(self, X, Y, activations, z_values):
-        """
-        Perform backward propagation to calculate gradients.
-        """
-        m = Y.shape[1]
-        gradients_w = [np.zeros(w.shape) for w in self.weights]
-        gradients_b = [np.zeros(b.shape) for b in self.biases]
-
-        # Calculate the error for the output layer
-        error = activations[-1] - Y
-        delta = error * self._sigmoid_derivative(z_values[-1])
-
-        # Backpropagate the error
-        for l in reversed(range(len(self.weights))):
-            gradients_w[l] = np.dot(delta, activations[l].T) / m
-            gradients_b[l] = np.sum(delta, axis=1, keepdims=True) / m
-
-            if l > 0:
-                delta = np.dot(self.weights[l].T, delta) * self._sigmoid_derivative(z_values[l-1])
-
-        return gradients_w, gradients_b
-
-    def _update_parameters(self, gradients_w, gradients_b):
-        """
-        Update weights and biases using the calculated gradients.
-        """
-        for l in range(len(self.weights)):
-            self.weights[l] -= self.learning_rate * gradients_w[l]
-            self.biases[l] -= self.learning_rate * gradients_b[l]
-
-    def fit(self, X, Y):
-        """
-        Train the neural network using gradient descent.
-        X: Input data matrix of shape (n_samples, n_features)
-        Y: Output data matrix of shape (n_samples, n_outputs)
-        """
-        X = X.T  # Shape should be (n_features, n_samples)
-        Y = Y.T  # Shape should be (n_outputs, n_samples)
-
-        for i in range(self.max_iter):
-            # Forward propagation
-            activations, z_values = self._forward_propagation(X)
-
-            # Compute gradients
-            gradients_w, gradients_b = self._backward_propagation(X, Y, activations, z_values)
-
-            # Update parameters
-            self._update_parameters(gradients_w, gradients_b)
-
-            # Compute the loss every 100 iterations
-            if i % 100 == 0:
-                loss = np.mean(np.square(activations[-1] - Y))
-                print(f"Iteration {i}: Loss = {loss:.4f}")
-
-    def predict(self, X):
-        """
-        Predict the output for a given input.
-        X: Input data matrix of shape (n_samples, n_features)
-        """
-        X = X.T
-        activations, _ = self._forward_propagation(X)
-        return activations[-1].T
-
-
 
 class MLP(object):
 
-    def __init__(self, layers=[4, 5, 1], activations=["relu", "sigmoid"], verbose=True, plot=False) -> None:
+    def __init__(self, layers=[15,10, 8,4,1], activations=["relu", "relu","relu","relu"], verbose=False, plot=False) -> None:
         """
         Initializes the MLP with specified layers, activations, and optional verbosity/plotting settings.
         Inputs:
@@ -185,8 +77,9 @@ class MLP(object):
             nabla_w[l - 1] = np.dot(delta[l - 1], z[l - 1].T)
 
         # Binary cross-entropy loss
+        loss = np.sum((output - y) ** 2) / (2 * y.shape[0])
         eps = 1e-9 # Add small constant 1e-9 to avoid log of zero
-        loss = -np.sum(y * np.log(output + eps) + (1 - y) * np.log(1 - output + eps)) / y.shape[0] 
+        #loss = -np.sum(y * np.log(output + eps) + (1 - y) * np.log(1 - output + eps)) / y.shape[0] 
         return nabla_b, nabla_w, loss
 
     def update_mini_batch(self, mini_batch, lr):
@@ -284,14 +177,15 @@ class MLP(object):
         Inputs:
             test_data: List of tuples (features, targets) for evaluation.
         Returns:
-            Average binary cross-entropy loss on the test data.
+            Average sum of squared errors on the test data.
         """
         sum_loss = 0
         for x, y in test_data:
             prediction = self.forward_pass(x)[-1][-1]
-            # Compute binary cross-entropy loss
-            sum_loss += -np.sum(y * np.log(prediction + 1e-9) + (1 - y) * np.log(1 - prediction + 1e-9))
+            # Compute sum of squared errors loss
+            sum_loss += np.sum((prediction - y) ** 2) / 2
         return sum_loss / len(test_data)
+
 
     def predict(self, X):
         """
@@ -349,240 +243,153 @@ class MLP(object):
 
 
 
-class NeuralNetworkWithScheduler:
-    def __init__(self, layers, initial_lr=0.01, max_iter=1000, scheduler_type='linear', decay_rate=0.01, power=1):
+import numpy as np
+
+class NeuralNetwork:
+    def __init__(self,layer_sizes):
         """
-        layers: List that defines the architecture of the network.
-                Example: [2, 4, 1] -> 2 inputs, 4 neurons in one hidden layer, 1 output
-        initial_lr: Initial learning rate for gradient descent
-        max_iter: Number of iterations (epochs) for training
-        scheduler_type: Type of scheduler ('linear', 'power', 'exponential')
-        decay_rate: Decay rate for learning rate adjustment
-        power: Power factor for 'power law' scheduler
+        Inicializa la red neuronal.
+        layer_sizes: Lista con la cantidad de neuronas por capa (incluye la capa de entrada y la de salida).
+        learning_rate: Tasa de aprendizaje para la optimización.
         """
-        self.layers = layers
-        self.initial_lr = initial_lr
-        self.max_iter = max_iter
-        self.scheduler_type = scheduler_type
-        self.decay_rate = decay_rate
-        self.power = power
-        self.weights = []
-        self.biases = []
+
+        self.layer_sizes = layer_sizes
+        self.num_layers = len(layer_sizes)
+        self.learning_rate = None
         
-        # Initialize weights and biases
-        np.random.seed(42)
-        for i in range(1, len(layers)):
-            self.weights.append(np.random.randn(layers[i], layers[i-1]))
-            self.biases.append(np.random.randn(layers[i], 1))
+        # Inicializar los pesos y sesgos
+        self.weights = [np.random.randn(layer_sizes[i], layer_sizes[i-1]) for i in range(1, self.num_layers)]
+        self.biases = [np.random.randn(layer_sizes[i], 1) for i in range(1, self.num_layers)]
+        
 
-    def _sigmoid(self, z):
-        return 1 / (1 + np.exp(-z))
+    def relu(self, z):
+        """Función de activación ReLU."""
+        return np.maximum(0, z)
 
-    def _sigmoid_derivative(self, z):
-        return self._sigmoid(z) * (1 - self._sigmoid(z))
+    def relu_derivative(self, z):
+        """Derivada de la función de activación ReLU."""
+        return np.where(z > 0, 1, 0)
 
-    def _forward_propagation(self, X):
-        activations = [X]
-        z_values = []
+    def forward(self, x):
+        """
+        Realiza la propagación hacia adelante.
+        x: Vector de entrada (n_features, 1).
+        Retorna las activaciones y los valores Z de cada capa.
+        """
+        activations = [x]
+        zs = []  # Valores Z en cada capa
 
-        for w, b in zip(self.weights, self.biases):
+        for i in range(self.num_layers - 2):
+            w = self.weights[i]
+            b = self.biases[i]
             z = np.dot(w, activations[-1]) + b
-            a = self._sigmoid(z)
-            z_values.append(z)
+            zs.append(z)
+            a = self.relu(z)
             activations.append(a)
-
-        return activations, z_values
-
-    def _backward_propagation(self, X, Y, activations, z_values):
-        m = Y.shape[1]
-        gradients_w = [np.zeros(w.shape) for w in self.weights]
-        gradients_b = [np.zeros(b.shape) for b in self.biases]
-
-        error = activations[-1] - Y
-        delta = error * self._sigmoid_derivative(z_values[-1])
-
-        for l in reversed(range(len(self.weights))):
-            gradients_w[l] = np.dot(delta, activations[l].T) / m
-            gradients_b[l] = np.sum(delta, axis=1, keepdims=True) / m
-
-            if l > 0:
-                delta = np.dot(self.weights[l].T, delta) * self._sigmoid_derivative(z_values[l-1])
-
-        return gradients_w, gradients_b
-
-    def _update_parameters(self, gradients_w, gradients_b, learning_rate):
-        for l in range(len(self.weights)):
-            self.weights[l] -= learning_rate * gradients_w[l]
-            self.biases[l] -= learning_rate * gradients_b[l]
-
-    def _adjust_learning_rate(self, epoch):
-        if self.scheduler_type == 'linear':
-            # Linear decay: lr = initial_lr - decay_rate * epoch
-            return self.initial_lr - self.decay_rate * epoch
-        elif self.scheduler_type == 'power':
-            # Power law: lr = initial_lr / (1 + decay_rate * epoch)^power
-            return self.initial_lr / (1 + self.decay_rate * epoch) ** self.power
-        elif self.scheduler_type == 'exponential':
-            # Exponential decay: lr = initial_lr * exp(-decay_rate * epoch)
-            return self.initial_lr * np.exp(-self.decay_rate * epoch)
-        else:
-            # Default to no adjustment
-            return self.initial_lr
-
-    def fit(self, X, Y):
-        X = X.T
-        Y = Y.T
-        losses = []
-
-        for epoch in range(self.max_iter):
-            learning_rate = self._adjust_learning_rate(epoch)
-            
-            activations, z_values = self._forward_propagation(X)
-            gradients_w, gradients_b = self._backward_propagation(X, Y, activations, z_values)
-            self._update_parameters(gradients_w, gradients_b, learning_rate)
-
-            if epoch % 100 == 0:
-                loss = np.mean(np.square(activations[-1] - Y))
-                losses.append(loss)
-                print(f"Epoch {epoch}: Loss = {loss:.4f}, Learning Rate = {learning_rate:.6f}")
         
-        # Plotting the loss curve
-        plt.plot(range(0, self.max_iter, 100), losses, label=self.scheduler_type)
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        plt.title('Loss Curve')
-        plt.legend()
-        plt.show()
-
-    def predict(self, X):
-        X = X.T
-        activations, _ = self._forward_propagation(X)
-        return activations[-1].T
-
-# Crear instancias de la red con diferentes estrategias de ajuste del learning rate
-nn_linear = NeuralNetworkWithScheduler(layers=[2, 4, 1], initial_lr=0.1, max_iter=1000, scheduler_type='linear', decay_rate=0.001)
-nn_power = NeuralNetworkWithScheduler(layers=[2, 4, 1], initial_lr=0.1, max_iter=1000, scheduler_type='power', decay_rate=0.001, power=1)
-nn_exponential = NeuralNetworkWithScheduler(layers=[2, 4, 1], initial_lr=0.1, max_iter=1000, scheduler_type='exponential', decay_rate=0.001)
-
-
-
-
-
-class NeuralNetworkWithL2:
-    def __init__(self, layers, initial_lr=0.01, max_iter=1000, lambda_=0.01):
-        """
-        layers: List that defines the architecture of the network.
-                Example: [2, 4, 1] -> 2 inputs, 4 neurons in one hidden layer, 1 output
-        initial_lr: Initial learning rate for gradient descent
-        max_iter: Number of iterations (epochs) for training
-        lambda_: L2 regularization parameter
-        """
-        self.layers = layers
-        self.initial_lr = initial_lr
-        self.max_iter = max_iter
-        self.lambda_ = lambda_
-        self.weights = []
-        self.biases = []
+        # Para la capa de salida (última capa), aplicar función identidad
+        w = self.weights[-1]
+        b = self.biases[-1]
+        z = np.dot(w, activations[-1]) + b
+        zs.append(z)
+        activations.append(z)  # Sin función de activación en la capa de salida
         
-        # Initialize weights and biases
-        np.random.seed(42)
-        for i in range(1, len(layers)):
-            self.weights.append(np.random.randn(layers[i], layers[i-1]))
-            self.biases.append(np.random.randn(layers[i], 1))
+        return activations, zs
 
-    def _sigmoid(self, z):
-        return 1 / (1 + np.exp(-z))
+    def compute_loss(self, y_true, y_pred):
+        """Calcula la pérdida de la red (suma de errores cuadráticos)."""
+        return 0.5 * np.sum((y_true - y_pred) ** 2)
 
-    def _sigmoid_derivative(self, z):
-        return self._sigmoid(z) * (1 - self._sigmoid(z))
-
-    def _forward_propagation(self, X):
-        activations = [X]
-        z_values = []
-
-        for w, b in zip(self.weights, self.biases):
-            z = np.dot(w, activations[-1]) + b
-            a = self._sigmoid(z)
-            z_values.append(z)
-            activations.append(a)
-
-        return activations, z_values
-
-    def _backward_propagation(self, X, Y, activations, z_values):
-        m = Y.shape[1]
-        gradients_w = [np.zeros(w.shape) for w in self.weights]
-        gradients_b = [np.zeros(b.shape) for b in self.biases]
-
-        error = activations[-1] - Y
-        delta = error * self._sigmoid_derivative(z_values[-1])
-
-        for l in reversed(range(len(self.weights))):
-            gradients_w[l] = (np.dot(delta, activations[l].T) / m) + (self.lambda_ / m) * self.weights[l]
-            gradients_b[l] = np.sum(delta, axis=1, keepdims=True) / m
-
-            if l > 0:
-                delta = np.dot(self.weights[l].T, delta) * self._sigmoid_derivative(z_values[l-1])
-
-        return gradients_w, gradients_b
-
-    def _update_parameters(self, gradients_w, gradients_b, learning_rate):
-        for l in range(len(self.weights)):
-            self.weights[l] -= learning_rate * gradients_w[l]
-            self.biases[l] -= learning_rate * gradients_b[l]
-
-    def fit(self, X, Y, X_val=None, Y_val=None):
+    def backward(self, x, y):
         """
-        X: Training data
-        Y: Training labels
-        X_val: Validation data
-        Y_val: Validation labels
+        Realiza el backpropagation para calcular los gradientes.
+        x: Vector de entrada (n_features, 1).
+        y: Valor verdadero (output esperado).
         """
-        X = X.T
-        Y = Y.T
-        losses = []
-        val_losses = []
+        # Propagación hacia adelante
+        activations, zs = self.forward(x)
 
-        for epoch in range(self.max_iter):
-            learning_rate = self.initial_lr
-            
-            # Forward propagation
-            activations, z_values = self._forward_propagation(X)
-            
-            # Backward propagation
-            gradients_w, gradients_b = self._backward_propagation(X, Y, activations, z_values)
-            
-            # Update parameters
-            self._update_parameters(gradients_w, gradients_b, learning_rate)
+        # Inicializar los gradientes
+        delta_weights = [np.zeros_like(w) for w in self.weights]
+        delta_biases = [np.zeros_like(b) for b in self.biases]
 
-            # Calculate training loss with regularization
-            loss = np.mean(np.square(activations[-1] - Y)) + (self.lambda_ / (2 * Y.shape[1])) * sum(np.linalg.norm(w) ** 2 for w in self.weights)
-            losses.append(loss)
-            
-            # Calculate validation loss if validation data is provided
-            if X_val is not None and Y_val is not None:
-                val_activations, _ = self._forward_propagation(X_val.T)
-                val_loss = np.mean(np.square(val_activations[-1] - Y_val.T))
-                val_losses.append(val_loss)
-            
-            # Print the loss every 100 epochs
+        # Calcular el error de la capa de salida
+        delta = (activations[-1] - y)  # Sin derivada de activación para la capa de salida
+
+        # Gradiente de la última capa
+        delta_weights[-1] = np.dot(delta, activations[-2].T)
+        delta_biases[-1] = delta
+
+        # Backpropagation para las capas ocultas
+        for l in range(2, self.num_layers):
+            z = zs[-l]
+            sp = self.relu_derivative(z)
+            delta = np.dot(self.weights[-l+1].T, delta) * sp
+            delta_weights[-l] = np.dot(delta, activations[-l-1].T)
+            delta_biases[-l] = delta
+
+        return delta_weights, delta_biases
+
+    def update_parameters(self, delta_weights, delta_biases):
+        """
+        Actualiza los parámetros (pesos y sesgos) de la red.
+        delta_weights: Gradientes de los pesos.
+        delta_biases: Gradientes de los sesgos.
+        """
+        self.weights = [w - self.learning_rate * dw for w, dw in zip(self.weights, delta_weights)]
+        self.biases = [b - self.learning_rate * db for b, db in zip(self.biases, delta_biases)]
+
+    def train(self, x_train, y_train, epochs,lr):
+        """
+        Entrena la red neuronal utilizando descenso por gradiente.
+        x_train: Datos de entrada de entrenamiento (n_features, n_samples).
+        y_train: Salida esperada (1, n_samples).
+        epochs: Número de épocas de entrenamiento.
+        """
+        self.learning_rate = lr
+        
+
+        n_samples = x_train.shape[1]
+
+        for epoch in range(epochs):
+            total_loss = 0
+            for i in range(n_samples):
+                # Seleccionar la muestra i-ésima
+                x = x_train[:, i].reshape(-1, 1)
+                y = y_train[:, i].reshape(-1, 1)
+
+                # Calcular los gradientes usando backpropagation
+                delta_weights, delta_biases = self.backward(x, y)
+
+                # Actualizar los parámetros
+                self.update_parameters(delta_weights, delta_biases)
+
+                # Calcular la pérdida acumulada
+                y_pred = self.forward(x)[0][-1]
+                total_loss += self.compute_loss(y, y_pred)
+
+            # Imprimir la pérdida cada 100 épocas
             if epoch % 100 == 0:
-                print(f"Epoch {epoch}: Training Loss = {loss:.4f}")
+                print(f"Epoch {epoch}, Loss: {total_loss / n_samples}")
+        print(self.weights)
+        
 
-        # Plot the training and validation loss
-        plt.plot(losses, label='Training Loss')
-        if X_val is not None and Y_val is not None:
-            plt.plot(val_losses, label='Validation Loss')
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        plt.title('Loss Curve with L2 Regularization')
-        plt.legend()
-        plt.show()
+    def predict(self, x):
+        """
+        Realiza una predicción para múltiples muestras.
+        x: Datos de entrada (n_features, n_samples).
+        Retorna un array con las predicciones.
+        """
+        n_samples = x.shape[1]
+        predictions = []
 
-    def predict(self, X):
-        X = X.T
-        activations, _ = self._forward_propagation(X)
-        return activations[-1].T
+        for i in range(n_samples):
+            sample = x[:, i].reshape(-1, 1)
 
-nn_with_l2 = NeuralNetworkWithL2(layers=[2, 4, 1], initial_lr=0.1, max_iter=1000, lambda_=0.01)
+            #prediction = self.forward(sample)[0][-1]
+            #predictions.append(prediction)
 
+            prediction = self.forward(sample)[0][-1].flatten()
+            predictions.append(prediction)
+        return np.array(predictions)
 
