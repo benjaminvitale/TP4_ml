@@ -225,7 +225,20 @@ data_2_frame['Vendedor'] = data_2_frame['Vendedor'].map(mean_encoding2)
 
 
 data_frame_dev = cd
+
+
 data_frame_test = data_2_frame
 x_train,y_train,x_dev,y_dev,vals_min,vals_max = ds.data_split_dev(data_frame_dev)
 x_test_2,y_test_2 = ds.data_create_test(data_frame_test,vals_min,vals_max)
 X_kf,Y_kf = ds.data_create_test(data_frame_dev,vals_min,vals_max)
+
+X_dev = []
+Y_dev = []
+for column in cd:
+        if column != 'Precio' and column != 'colores':
+            X_dev.append(cd[column].values)
+        if column == 'Precio':
+            Y_dev.append(cd[column].values)
+X_dev = pp.min_max_scaling(X_dev)[0]
+
+folds = ds.manual_k_fold_split(np.array(X_dev),np.array(Y_dev),5)

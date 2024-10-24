@@ -83,5 +83,24 @@ def data_create_test(cd,vals_min,vals_max):
     return x_test,y_test
 
 
+def manual_k_fold_split(x_data, y_data, k_folds):
+    """
+    Divide los datos en k folds para validación cruzada.
+    """
+    n_samples = x_data.shape[1]
+    indices = np.arange(n_samples)
+    np.random.shuffle(indices)
+    
+    fold_sizes = n_samples // k_folds
+    folds = []
+
+    for i in range(k_folds):
+        start = i * fold_sizes
+        end = start + fold_sizes if i != k_folds - 1 else n_samples
+        fold_indices = indices[start:end]
+        folds.append(fold_indices)
+    
+    return folds
+
 
 

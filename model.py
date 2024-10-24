@@ -4,247 +4,6 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 
-class MLP(object):
-
-    def __init__(self, layers=[15,10, 8,4,1], activations=["relu", "relu","relu","relu"], verbose=False, plot=False) -> None:
-        """
-        Initializes the MLP with specified layers, activations, and optional verbosity/plotting settings.
-        Inputs:
-            layers: List of integers representing the number of nodes in each layer.
-            activations: List of activation functions for each layer.
-            verbose: Boolean flag for logging output.
-            plot: Boolean flag for plotting learning curves.
-        """
-        assert len(layers) == len(activations) + 1, "Number of layers and activations mismatch"
-        self.layers = layers
-        self.num_layers = len(layers)
-        self.activations = activations
-        self.verbose = verbose
-        self.plot = plot
-
-        # Initialize weights and biases randomly
-        self.biases = [np.random.randn(y, 1) for y in layers[1:]]
-        self.weights = [np.random.randn(y, x) for x, y in zip(layers[:-1], layers[1:])]
-
-    def forward_pass(self, x):
-        """
-        Performs forward propagation of input data through the MLP.
-        Inputs:
-            x: Features vector (input data).
-        Returns:
-            a: List of preactivations for each layer.
-            z: List of activations for each layer.
-        """
-        z = [np.array(x).reshape(-1, 1)]  # Input activation (reshape to column vector)
-        a = []  # To store preactivations
-
-        for l in range(1, self.num_layers):
-            a_l = np.dot(self.weights[l - 1], z[l - 1]) + self.biases[l - 1]
-            a.append(np.copy(a_l))
-            h = self.getActivationFunction(self.activations[l - 1])
-            z_l = h(a_l)
-            z.append(np.copy(z_l))
-
-        return a, z
-    
-    def backward_pass(self, a, z, y):
-        """
-        Performs backward propagation to compute gradients of the loss with respect to weights and biases.
-        Inputs:
-            a: List of preactivations from forward pass.
-            z: List of activations from forward pass.
-            y: True target values.
-        Returns:
-            nabla_b: List of gradients for biases.
-            nabla_w: List of gradients for weights.
-            loss: Calculated loss value.
-        """
-        delta = [np.zeros(w.shape) for w in self.weights]
-        h_prime = self.getDerivitiveActivationFunction(self.activations[-1])
-        output = z[-1]
-        delta[-1] = (output - y)  # Derivative of binary cross-entropy loss
-
-        nabla_b = [np.zeros(b.shape) for b in self.biases]
-        nabla_w = [np.zeros(w.shape) for w in self.weights]
-
-        nabla_b[-1] = delta[-1]
-        nabla_w[-1] = np.dot(delta[-1], z[-2].T)
-
-        for l in reversed(range(1, len(delta))):
-            h_prime = self.getDerivitiveActivationFunction(self.activations[l - 1])
-            delta[l - 1] = np.dot(self.weights[l].T, delta[l]) * h_prime(a[l - 1])
-            nabla_b[l - 1] = delta[l - 1]
-            nabla_w[l - 1] = np.dot(delta[l - 1], z[l - 1].T)
-
-        # Binary cross-entropy loss
-        loss = np.sum((output - y) ** 2) / (2 * y.shape[0])
-        eps = 1e-9 # Add small constant 1e-9 to avoid log of zero
-        #loss = -np.sum(y * np.log(output + eps) + (1 - y) * np.log(1 - output + eps)) / y.shape[0] 
-        return nabla_b, nabla_w, loss
-
-    def update_mini_batch(self, mini_batch, lr):
-        """
-        Updates model weights and biases using gradients computed from a mini-batch.
-        Inputs:
-            mini_batch: List of training samples (features and targets).
-            lr: Learning rate for gradient updates.
-        Returns:
-            Average loss for the mini-batch.
-        """
-        nabla_b = [np.zeros(b.shape) for b in self.biases]
-        nabla_w = [np.zeros(w.shape) for w in self.weights]
-        total_loss = 0
-
-        for x, y in mini_batch:
-            delta_nabla_b, delta_nabla_w, loss = self.backward_pass(*self.forward_pass(x), y)
-            nabla_b = [nb + dnb for nb, dnb in zip(nabla_b, delta_nabla_b)]
-            nabla_w = [nw + dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
-            total_loss += loss
-
-        self.weights = [w - lr * nw for w, nw in zip(self.weights, nabla_w)]
-        self.biases = [b - lr * nb for b, nb in zip(self.biases, nabla_b)]
-        return total_loss / len(mini_batch)
-
-    def fit(self, training_data, epochs, mini_batch_size, lr, val_data=None, verbose=0):
-        """
-        Trains the MLP using the provided training data, with options for validation and verbosity.
-        Inputs:
-            training_data: List of tuples (features, targets) for training.
-            epochs: Number of epochs to train.
-            mini_batch_size: Number of samples per mini-batch.
-            lr: Learning rate.
-            val_data: Optional validation data for performance monitoring.
-            verbose: Verbosity level for progress output.
-        Returns:
-            train_losses: List of training loss values per epoch.
-            val_losses: List of validation loss values per epoch (if validation data is provided).
-        """
-        train_losses = []
-        val_losses = []
-        n = len(training_data)
-        
-        # Determine whether to use tqdm progress bar and detailed printout
-        use_tqdm = verbose == 0 or verbose == 2
-        print_detailed = verbose == 1 or verbose == 2
-        progress_bar = tqdm(total=epochs, desc="Training Epochs") if use_tqdm else None
-
-        for e in range(epochs):
-            random.shuffle(training_data)
-            mini_batches = [training_data[i:i + mini_batch_size] for i in range(0, n, mini_batch_size)]
-            
-            epoch_train_losses = []
-
-            for mini_batch in mini_batches:
-                train_loss = self.update_mini_batch(mini_batch, lr)
-                epoch_train_losses.append(train_loss)
-
-            avg_train_loss = sum(epoch_train_losses) / len(epoch_train_losses)
-            train_losses.append(avg_train_loss)
-            
-            if val_data:
-                val_loss = self.evaluate(val_data)
-                val_losses.append(val_loss)
-            
-            if print_detailed:
-                if val_data:
-                    print(f"Epoch {e + 1}: Train Loss: {avg_train_loss:.4f} | Val Loss: {val_loss:.4f}")
-                else:
-                    print(f"Epoch {e + 1}: Train Loss: {avg_train_loss:.4f}")
-
-            if use_tqdm:
-                progress_bar.update(1)
-
-        if use_tqdm:
-            progress_bar.close()
-
-        if self.plot: # Plot the training and validation loss curves
-            plt.figure(figsize=(10, 6))
-            plt.plot(train_losses, label='Training Loss')
-            if val_losses:
-                plt.plot(val_losses, label='Validation Loss')
-            plt.xlabel('Epoch')
-            plt.ylabel('Loss')
-            plt.title('Training and Validation Loss Curves')
-            plt.legend()
-            plt.grid()
-            plt.show()
-
-        return train_losses, val_losses
-    
-    def evaluate(self, test_data):
-        """
-        Evaluates the model on a given test dataset.
-        Inputs:
-            test_data: List of tuples (features, targets) for evaluation.
-        Returns:
-            Average sum of squared errors on the test data.
-        """
-        sum_loss = 0
-        for x, y in test_data:
-            prediction = self.forward_pass(x)[-1][-1]
-            # Compute sum of squared errors loss
-            sum_loss += np.sum((prediction - y) ** 2) / 2
-        return sum_loss / len(test_data)
-
-
-    def predict(self, X):
-        """
-        Predicts output labels for input data.
-        Inputs:
-            X: Array-like input data for prediction.
-        Returns:
-            Predictions as a numpy array.
-        """
-        predictions = []
-        for x in X:
-            prediction = self.forward_pass(x)[-1][-1].flatten()
-            predictions.append(prediction)
-        return np.array(predictions)
-
-    @staticmethod
-    def getActivationFunction(name):
-        """
-        Returns the activation function based on the provided name.
-        Inputs:
-            name: String representing the activation function ('sigmoid' or 'relu').
-        Returns:
-            Activation function corresponding to the name.
-        """
-        if name == 'sigmoid':
-            return lambda x: 1 / (1 + np.exp(-x))
-        elif name == 'relu':
-            return lambda x: np.maximum(x, 0)
-        else:
-            print('Unknown activation function. Using linear by default.')
-            return lambda x: x
-
-    @staticmethod
-    def getDerivitiveActivationFunction(name):
-        """
-        Returns the derivative of the activation function based on the provided name.
-        Inputs:
-            name: String representing the activation function ('sigmoid' or 'relu').
-        Returns:
-            Derivative of the activation function.
-        """
-        if name == 'sigmoid':
-            sig = lambda x: 1 / (1 + np.exp(-x))
-            return lambda x: sig(x) * (1 - sig(x))
-        elif name == 'relu':
-            def relu_diff(x):
-                y = np.copy(x)
-                y[y >= 0] = 1
-                y[y < 0] = 0
-                return y
-            return relu_diff
-        else:
-            print('Unknown activation function. Using linear by default.')
-            return lambda x: 1
-
-
-
-import numpy as np
-
 class NeuralNetwork:
     def __init__(self,layer_sizes):
         """
@@ -256,6 +15,7 @@ class NeuralNetwork:
         self.layer_sizes = layer_sizes
         self.num_layers = len(layer_sizes)
         self.learning_rate = None
+        self.regularization_param = 0
         
         # Inicializar los pesos y sesgos
         self.weights = [np.random.randn(layer_sizes[i], layer_sizes[i-1]) for i in range(1, self.num_layers)]
@@ -296,9 +56,13 @@ class NeuralNetwork:
         
         return activations, zs
 
-    def compute_loss(self, y_true, y_pred):
+    def compute_loss(self, y_true, y_pred,regs):
         """Calcula la pérdida de la red (suma de errores cuadráticos)."""
-        return 0.5 * np.sum((y_true - y_pred) ** 2)
+        loss = 0.5 * np.sum((y_true - y_pred) ** 2)
+        if regs:
+            l2_regularization = 0.5 * self.regularization_param * sum(np.sum(w**2) for w in self.weights)
+            return loss + l2_regularization
+        return loss
 
     def backward(self, x, y):
         """
@@ -339,7 +103,94 @@ class NeuralNetwork:
         self.weights = [w - self.learning_rate * dw for w, dw in zip(self.weights, delta_weights)]
         self.biases = [b - self.learning_rate * db for b, db in zip(self.biases, delta_biases)]
 
-    def train(self, x_train, y_train, epochs,lr):
+
+    def update_learning_rate(self,lr, epoch, decay_type, decay_rate, power):
+        """
+        Actualiza la tasa de aprendizaje según el tipo de decaimiento especificado.
+        Parámetros:
+            lr: Tasa de aprendizaje actual.
+            epoch: Número de época actual.
+            decay_type: Tipo de decaimiento ("linear", "power", "exponential").
+            decay_rate: Tasa de decaimiento (utilizado para decaimiento lineal y exponencial).
+            power: Factor de potencia (utilizado para decaimiento por ley de potencia).
+        Retorna:
+            Nueva tasa de aprendizaje.
+        """
+        if decay_type == "linear":
+            # Decaimiento lineal
+            new_lr = lr - (decay_rate * epoch)
+            return new_lr # Asegurar que la tasa de aprendizaje no sea menor a un valor mínimo
+        elif decay_type == "power":
+            # Decaimiento por ley de potencia
+            new_lr = lr * (1 + epoch) ** -power
+            return new_lr
+        elif decay_type == "exponential":
+            # Decaimiento exponencial
+            new_lr = lr * np.exp(-decay_rate * epoch)
+            return new_lr
+        else:
+            raise ValueError("Tipo de decaimiento desconocido. Elija 'linear', 'power' o 'exponential'.")
+
+
+    def train2(self,plot, x_train, y_train,x_val,y_val, epochs, initial_lr, decay_type, decay_rate, power=1.0):
+        """
+        Entrena la red neuronal utilizando descenso por gradiente con ajuste dinámico de la tasa de aprendizaje.
+        x_train: Datos de entrada de entrenamiento (n_features, n_samples).
+        y_train: Salida esperada (1, n_samples).
+        epochs: Número de épocas de entrenamiento.
+        initial_lr: Tasa de aprendizaje inicial.
+        decay_type: Tipo de decaimiento de la tasa de aprendizaje ("linear", "power", "exponential").
+        decay_rate: Tasa de decaimiento para el ajuste.
+        power: Factor de potencia (para el decaimiento por ley de potencia).
+        """
+        self.learning_rate = initial_lr
+        n_samples = x_train.shape[1]
+        train_losses = []
+        val_losses = []
+
+        for epoch in range(epochs):
+            # Actualizar la tasa de aprendizaje según la época actual
+            self.learning_rate = self.update_learning_rate(initial_lr, epoch, decay_type, decay_rate, power)
+
+            total_loss = 0
+            for i in range(n_samples):
+                # Seleccionar la muestra i-ésima
+                x = x_train[:, i].reshape(-1, 1)
+                y = y_train[:, i].reshape(-1, 1)
+
+                # Calcular los gradientes usando backpropagation
+                delta_weights, delta_biases = self.backward(x, y)
+
+                # Actualizar los parámetros
+                self.update_parameters(delta_weights, delta_biases)
+
+                # Calcular la pérdida acumulada
+                y_pred = self.forward(x)[0][-1]
+                total_loss += self.compute_loss(y, y_pred,False)
+
+
+            avg_train_loss = total_loss / n_samples
+            train_losses.append(avg_train_loss)
+            # Imprimir la pérdida cada 100 épocas
+            if epoch % 100 == 0:
+                print(f"Epoch {epoch}, Loss: {total_loss / n_samples}, Learning Rate: {self.learning_rate}")
+            
+            if x_val is not None:
+                val_loss = np.mean([self.compute_loss(y_val[:, j].reshape(-1, 1), self.forward(x_val[:, j].reshape(-1, 1))[0][-1],False) for j in range(x_val.shape[1])])
+                val_losses.append(val_loss)
+            
+        if plot:
+            plt.figure(figsize=(10, 6))
+            plt.plot(train_losses, label='Training Loss')
+            plt.plot(val_losses, label='Validation Loss')
+            plt.xlabel('Epoch')
+            plt.ylabel('Loss')
+            plt.title(f'Error vs Epochs for Decay Rate {decay_rate} ({decay_type} decay)')
+            plt.legend()
+            plt.grid()
+            plt.show()
+
+    def train(self,plot, x_train, y_train,x_val,y_val, epochs,lr,regs,lambda_):
         """
         Entrena la red neuronal utilizando descenso por gradiente.
         x_train: Datos de entrada de entrenamiento (n_features, n_samples).
@@ -347,8 +198,10 @@ class NeuralNetwork:
         epochs: Número de épocas de entrenamiento.
         """
         self.learning_rate = lr
+        self.regularization_param = lambda_
         
-
+        train_losses = []
+        val_losses = []
         n_samples = x_train.shape[1]
 
         for epoch in range(epochs):
@@ -366,14 +219,108 @@ class NeuralNetwork:
 
                 # Calcular la pérdida acumulada
                 y_pred = self.forward(x)[0][-1]
-                total_loss += self.compute_loss(y, y_pred)
-
+                total_loss += self.compute_loss(y, y_pred,regs)
+            loss_ = total_loss / n_samples
+            train_losses.append(loss_)
             # Imprimir la pérdida cada 100 épocas
             if epoch % 100 == 0:
                 print(f"Epoch {epoch}, Loss: {total_loss / n_samples}")
-        print(self.weights)
-        
+            if x_val is not None:
+                val_loss = np.mean([self.compute_loss(y_val[:, j].reshape(-1, 1), self.forward(x_val[:, j].reshape(-1, 1))[0][-1],regs) for j in range(x_val.shape[1])])
+                val_losses.append(val_loss)
+        if plot:
+            plt.figure(figsize=(10, 6))
+            plt.plot(train_losses, label='Training Loss')
+            plt.plot(val_losses, label='Validation Loss')
+            plt.xlabel('Epoch')
+            plt.ylabel('Loss')
+            plt.title(f'Error vs Epochs')
+            plt.legend()
+            plt.grid()
+            plt.show()
+    
+    def train3(self, x_train, y_train, epochs, lr, optimizer, batch_size, x_val, y_val):
+        self.learning_rate = lr
 
+        # Parámetros de optimizadores
+        v_weights = [np.zeros_like(w) for w in self.weights]  # Momentum para SGD con momentum
+        v_biases = [np.zeros_like(b) for b in self.biases]
+        m_weights = [np.zeros_like(w) for w in self.weights]  # Para Adam
+        m_biases = [np.zeros_like(b) for b in self.biases]
+        v_hat_weights = [np.zeros_like(w) for w in self.weights]  # Para Adam
+        v_hat_biases = [np.zeros_like(b) for b in self.biases]
+        beta1 = 0.9  # Parámetro Adam
+        beta2 = 0.999  # Parámetro Adam
+        epsilon = 1e-8  # Parámetro Adam
+
+        train_losses = []
+        val_losses = []
+
+
+        for epoch in range(epochs):
+            total_loss = 0
+            indices = np.arange(x_train.shape[1])
+            np.random.shuffle(indices)  # Mezclar los datos
+
+            # Mini-batch SGD
+            for start in range(0, x_train.shape[1], batch_size):
+                end = min(start + batch_size, x_train.shape[1])
+                batch_indices = indices[start:end]
+                x_batch = x_train[:, batch_indices]
+                y_batch = y_train[:, batch_indices]
+
+                delta_weights = [np.zeros_like(w) for w in self.weights]
+                delta_biases = [np.zeros_like(b) for b in self.biases]
+
+                # Acumular gradientes para el mini-batch
+                for i in range(x_batch.shape[1]):
+                    x = x_batch[:, i].reshape(-1, 1)
+                    y = y_batch[:, i].reshape(-1, 1)
+                    dw, db = self.backward(x, y)
+                    delta_weights = [dw_sum + dw_i for dw_sum, dw_i in zip(delta_weights, dw)]
+                    delta_biases = [db_sum + db_i for db_sum, db_i in zip(delta_biases, db)]
+
+                # Promediar gradientes en el mini-batch
+                delta_weights = [dw / batch_size for dw in delta_weights]
+                delta_biases = [db / batch_size for db in delta_biases]
+
+                # Actualizar parámetros usando el optimizador seleccionado
+                if optimizer == 'sgd':
+                    self.update_parameters(delta_weights, delta_biases)
+                elif optimizer == 'momentum':
+                    momentum_factor = 0.9
+                    v_weights = [momentum_factor * vw + dw for vw, dw in zip(v_weights, delta_weights)]
+                    v_biases = [momentum_factor * vb + db for vb, db in zip(v_biases, delta_biases)]
+                    self.update_parameters(v_weights, v_biases)
+                elif optimizer == 'adam':
+                    beta1_pow = beta1 ** (epoch + 1)
+                    beta2_pow = beta2 ** (epoch + 1)
+                    m_weights = [beta1 * mw + (1 - beta1) * dw for mw, dw in zip(m_weights, delta_weights)]
+                    m_biases = [beta1 * mb + (1 - beta1) * db for mb, db in zip(m_biases, delta_biases)]
+                    v_hat_weights = [beta2 * vw + (1 - beta2) * (dw ** 2) for vw, dw in zip(v_hat_weights, delta_weights)]
+                    v_hat_biases = [beta2 * vb + (1 - beta2) * (db ** 2) for vb, db in zip(v_hat_biases, delta_biases)]
+                    m_weights_hat = [mw / (1 - beta1_pow) for mw in m_weights]
+                    m_biases_hat = [mb / (1 - beta1_pow) for mb in m_biases]
+                    v_hat_weights_hat = [vw / (1 - beta2_pow) for vw in v_hat_weights]
+                    v_hat_biases_hat = [vb / (1 - beta2_pow) for vb in v_hat_biases]
+                    adam_weights = [mw_hat / (np.sqrt(vw_hat) + epsilon) for mw_hat, vw_hat in zip(m_weights_hat, v_hat_weights_hat)]
+                    adam_biases = [mb_hat / (np.sqrt(vb_hat) + epsilon) for mb_hat, vb_hat in zip(m_biases_hat, v_hat_biases_hat)]
+                    self.update_parameters(adam_weights, adam_biases)
+
+                y_pred = self.forward(x)[0][-1]
+                total_loss += self.compute_loss(y, y_pred,False)
+            loss_ = total_loss / x_train.shape[1]
+            train_losses.append(loss_)
+            # Calcular el error en el conjunto de entrenamiento y validación
+            if x_val is not None:
+                val_loss = np.mean([self.compute_loss(y_val[:, j].reshape(-1, 1), self.forward(x_val[:, j].reshape(-1, 1))[0][-1],False) for j in range(x_val.shape[1])])
+                val_losses.append(val_loss)
+
+            # Imprimir progreso cada 100 épocas
+            if epoch % 100 == 0:
+                print(f"Epoch {epoch}, Train Loss: {loss_}, Validation Loss: {val_loss}")
+
+        return train_losses, val_losses
     def predict(self, x):
         """
         Realiza una predicción para múltiples muestras.
