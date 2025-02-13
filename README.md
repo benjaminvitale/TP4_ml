@@ -1,3 +1,4 @@
 Trabajo Práctico 4: Redes Neuronales
+
 El objetivo de este trabajo es implementar y entrenar una red neuronal para estimar el precio de venta de una SUV (Sport Utility Vehicle) de Toyota. El dataset Precios de SUVs contiene información sobre los precios en dólares de tres tipos de vehículos SUV de la marca Toyota, publicados en la página de Mercado Libre Argentina, junto con características adi- cionales relevantes de cada publicación. Previamente, el conjunto de datos fue dividido en subconjuntos de desarrollo (toyota_dev.csv) y prueba (toyota_test.csv), los cuales deberán ser utilizados para entrenar y evaluar los modelos.
 NOTA: Use exclusivamente NumPy para la implementación de funciones y/o clases. No se permite el uso de librerías de Machine Learning como Scikit-Learn, TensorFlow o Py- Torch, salvo indicación específica en la consigna.
